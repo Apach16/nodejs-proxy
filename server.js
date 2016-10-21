@@ -24,7 +24,31 @@ if (cluster.isMaster) {
   server = http.createServer((req, res) => {
     var method = req.method;
     var ip = req.connection.remoteAddress;
-    var address = req.headers.host + req.url;
+    var url_info  = url.parse(req.url)
+    var options = {
+      hostname: url_info.hostname,
+      port: url_info.port,
+      method: method,
+      path: url_info.path,
+      headers: req.headers
+    }
+    var proxy_req = http.request(options)
+    proxy_req.on('response', function(proxy_res) {
+      proxy_res.on('data', function(chunk) {
+        res.write(chunk, 'binary')
+      })
+      proxy_res.on('end', function() {
+        res.end()
+      })
+      res.writeHead(proxy_res.statusCode, proxy_res.headers)
+    })
+    req.on('data', function(chunk) {
+      proxy_req.write(chunk, 'binary')
+    })
+    req.on('end', function() {
+      proxy_req.end()
+    })
+    // формируем время и дату
     var date = new Date;
     var curren_date = date.getFullYear() + '-'
       + format_date(date.getMonth() + 1) + '-'
@@ -33,7 +57,7 @@ if (cluster.isMaster) {
       + format_date(date.getMinutes()) + ':'
       + format_date(date.getSeconds());
     // собираем все данные в одну строку
-    var data = '[' + curren_date + ' ' + current_time + ']' + ' ' + ip + ' ' + method + ' ' +  address;
+    var data = '[' + curren_date + ' ' + current_time + ']' + ' ' + ip + ' ' + method + ' ' +  req.url;
     fs.appendFile('log.txt', data + '\n', function(err){
       if (err){
         return console.log(err);
@@ -41,9 +65,6 @@ if (cluster.isMaster) {
         console.log(`${data} saved!`);
       }
     });
-    res.writeHead(200);
-    res.write("Welcome! You process id is " + process.pid + "\n");
-    res.end(`${data}\n`);
   });
 
   server.listen(port, hostname, () => {
